@@ -9,8 +9,7 @@ COPY bot.py ./
 COPY requirements.txt ./
 
 # Устанавливаем зависимости
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install threading time schedule datetime telebot
 COPY . .
 # Скрипт для автоматического перезапуска
 
