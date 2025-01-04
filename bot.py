@@ -17,7 +17,7 @@ Z_CHAT_ID = -1002402983187
 LANG_TEXTS = {
     "Русский": {
         "start": "Здравствуйте! Выберите язык:",
-        "main_menu": "Выберите функцию (X, Y или Z):",
+        "main_menu": "Выберите функцию :",
         "go_back": "Вернуться в главное меню",
         "choose_day": "Выберите день для сессии:",
         "choose_time": "Выберите время для {date}:",
@@ -41,7 +41,7 @@ LANG_TEXTS = {
     },
     "Узбекский": {
         "start": "Salom! Tilni tanlang:",
-        "main_menu": "Funktsiyani tanlang (X, Y yoki Z):",
+        "main_menu": "Funktsiyani tanlang:",
         "go_back": "Asosiy menyuga qaytish",
         "choose_day": "Sessiya uchun kunni tanlang:",
         "choose_time": "{date} uchun vaqtni tanlang:",
