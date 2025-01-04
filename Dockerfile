@@ -7,10 +7,6 @@ WORKDIR /app
 # Копируем файлы проекта
 COPY bot.py ./
 COPY requirements.txt ./
-
+CMD pip install -r requirements.txt && python3 bot.py
 # Устанавливаем зависимости
-COPY . .
-# Скрипт для автоматического перезапуска
 
-# Указываем команду запуска контейнера
-CMD ["python","bot.py"]
