@@ -1,3 +1,16 @@
+import subprocess
+import sys
+
+def install_requirements():
+    try:
+        # Устанавливаем зависимости из requirements.txt
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+        print("Dependencies installed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error installing dependencies: {e}")
+        sys.exit(1)
+
+
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta, time
@@ -336,6 +349,7 @@ def start_background_scheduler():
     t.start()
 
 if __name__ == "__main__":
+    install_requirements()
     print("Bot is running...")
     start_background_scheduler()
     bot.infinity_polling()
