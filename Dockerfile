@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Скрипт для автоматического перезапуска
 
 # Указываем команду запуска контейнера
-CMD ["python3 bot.py"]
+CMD ["sh", "-c","python3 bot.py"]
