@@ -10,7 +10,7 @@ def install_requirements():
         print(f"Error installing dependencies: {e}")
         sys.exit(1)
 
-
+install_requirements()
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta, time
@@ -349,7 +349,7 @@ def start_background_scheduler():
     t.start()
 
 if __name__ == "__main__":
-    install_requirements()
+    
     print("Bot is running...")
     start_background_scheduler()
     bot.infinity_polling()
