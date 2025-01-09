@@ -9,15 +9,14 @@ import time as time_sleep
 TOKEN = "7376605355:AAHGXDRBWVjTiwW0uAZFF70B0ggYIu7SU3Q"
 bot = telebot.TeleBot(TOKEN)
 
-X_CHAT_ID = -1002345604697  
+X_CHAT_ID = -1002345604697
 Y_CHAT_ID = -1002282039816
-Z_CHAT_ID = -1002402983187   
-
+Z_CHAT_ID = -1002402983187
 
 LANG_TEXTS = {
     "Русский": {
         "start": "Здравствуйте! Выберите язык:",
-        "main_menu": "Выберите функцию :",
+        "main_menu": "Выберите функцию:",
         "go_back": "Вернуться в главное меню",
         "choose_day": "Выберите день для сессии:",
         "choose_time": "Выберите время для {date}:",
@@ -34,7 +33,10 @@ LANG_TEXTS = {
             "Вот ваша ссылка для входа в чат X:\n{invite_link}"
         ),
         "link_error": "Ошибка при получении ссылки на чат X: {error}",
-
+        "already_booked_msg": (
+            "У вас уже есть активная бронь.\n"
+            "Дождитесь окончания текущего сеанса, прежде чем бронировать заново."
+        ),
         # Тексты для Y/Z
         "link_to_chat": "Ссылка на чат {chat_name}: {link}",
         "link_error_yz": "Ошибка при получении ссылки для {chat_name}: {error}",
@@ -58,7 +60,10 @@ LANG_TEXTS = {
             "Mana siz uchun X chatiga havola:\n{invite_link}"
         ),
         "link_error": "X chatiga havola olishda xatolik: {error}",
-
+        "already_booked_msg": (
+            "Sizda allaqachon faol bron mavjud.\n"
+            "Yangi bron qilishdan oldin avvalgi seans tugashini kuting."
+        ),
         # Тексты для Y/Z
         "link_to_chat": "{chat_name} chatiga havola: {link}",
         "link_error_yz": "{chat_name} chatiga havola olishda xatolik: {error}",
@@ -71,15 +76,12 @@ user_language = {}
 # Бронирования: (дата, слот) -> user_id
 booked_sessions = {}
 
-# Список запланированных уведомлений о начале сеанса (для X):
-# Каждый элемент: {
-#   "user_id": int,
-#   "notify_dt": datetime,
-#   "sent": bool
-# }
+# Запланированные уведомления о начале сеанса (для X):
 scheduled_notifications = []
 
-
+# -------------------------------------------------------------------
+# ФУНКЦИИ ДЛЯ ПЕРЕВОДА И ПРОВЕРКИ ЯЗЫКА
+# -------------------------------------------------------------------
 def get_lang(user_id):
     return user_language.get(user_id, "Русский")
 
@@ -90,10 +92,13 @@ def tr(user_id, key, **kwargs):
         return template.format(**kwargs)
     return template
 
+# -------------------------------------------------------------------
+# ГЕНЕРАЦИЯ СЛОТОВ (каждые 30 минут с 11:00 до 22:00)
+# -------------------------------------------------------------------
 def generate_time_slots():
     slots = []
-    start_time = time(9, 0)
-    end_time   = time(18, 0)
+    start_time = time(11, 0)
+    end_time   = time(22, 0)
     current = datetime.combine(datetime.today(), start_time)
     end_dt = datetime.combine(datetime.today(), end_time)
 
@@ -104,13 +109,36 @@ def generate_time_slots():
 
 ALL_TIME_SLOTS = generate_time_slots()
 
+# -------------------------------------------------------------------
+# ПРОВЕРКА, ЕСТЬ ЛИ У ПОЛЬЗОВАТЕЛЯ ЕЩЁ НЕ ИСТЕКШАЯ БРОНЬ
+# -------------------------------------------------------------------
+def user_has_future_booking(user_id):
+    """
+    Если в словаре booked_sessions найдётся слот (дата+время),
+    которое ещё не наступило, значит у пользователя уже есть бронь в будущем.
+    """
+    now = datetime.now()
+    for (ds, sl), uid in booked_sessions.items():
+        if uid == user_id:
+            dt = datetime.strptime(f"{ds} {sl}", "%Y-%m-%d %H:%M")
+            # Проверяем, не прошло ли уже время
+            if dt >= now:
+                return True
+    return False
+
+# -------------------------------------------------------------------
+# ГЛАВНОЕ МЕНЮ
+# -------------------------------------------------------------------
 def show_main_menu(message):
     user_id = message.chat.id if hasattr(message, 'chat') else message.from_user.id
 
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(text="Медицинская консультация", callback_data="func_X"))
-    markup.add(InlineKeyboardButton(text="Вызов скорой", callback_data="func_Y"))
-    markup.add(InlineKeyboardButton(text="Заказ лекарств", callback_data="func_Z"))
+    if get_lang(user_id) == "Узбекский":
+        markup.add(InlineKeyboardButton(text="Tibbiy maslahat", callback_data="func_X"))
+        markup.add(InlineKeyboardButton(text="Tez yordam chaqirish", callback_data="func_Y"))
+        markup.add(InlineKeyboardButton(text="Dori-darmonlarga buyurtma berish", callback_data="func_Z"))
+    else:
+        markup.add(InlineKeyboardButton(text="Медицинская консультация", callback_data="func_X"))
 
     bot.edit_message_text(
         chat_id=message.chat.id,
@@ -119,16 +147,15 @@ def show_main_menu(message):
         reply_markup=markup
     )
 
-# ======= Фоновая проверка времени =======
+# -------------------------------------------------------------------
+# ФОНОВАЯ ПРОВЕРКА ЗАПЛАНИРОВАННЫХ УВЕДОМЛЕНИЙ
+# -------------------------------------------------------------------
 def check_scheduled_events():
-    """
-    Проверяем, не наступило ли время, чтобы отправить пользователю ссылку на чат X.
-    """
     now = datetime.now()
     for task in scheduled_notifications:
         if not task["sent"] and now >= task["notify_dt"]:
             user_id = task["user_id"]
-            # Пробуем получить ссылку на X чат
+            # Пробуем получить ссылку на чат X
             try:
                 link = bot.export_chat_invite_link(X_CHAT_ID)
                 time_str = task["notify_dt"].strftime("%H:%M")
@@ -154,14 +181,18 @@ def check_scheduled_events():
             task["sent"] = True
 
 def run_schedule_checker():
-    """
-    Запускаем бесконечный цикл с проверкой по schedule каждые 10 секунд.
-    """
     while True:
         schedule.run_pending()
         time_sleep.sleep(10)
 
-# ======= Хендлеры =======
+def start_background_scheduler():
+    schedule.every(1).minutes.do(check_scheduled_events)
+    t = threading.Thread(target=run_schedule_checker, daemon=True)
+    t.start()
+
+# -------------------------------------------------------------------
+# ХЕНДЛЕРЫ
+# -------------------------------------------------------------------
 @bot.message_handler(commands=['start'])
 def start_command(message):
     markup = InlineKeyboardMarkup()
@@ -184,8 +215,17 @@ def callback_language(call):
 def callback_function_choice(call):
     user_id = call.from_user.id
 
-    # ======== ФУНКЦИЯ X ========
+    # --- ФУНКЦИЯ X ---
     if call.data == "func_X":
+        # Проверяем, нет ли у пользователя уже активной (будущей) брони
+        if user_has_future_booking(user_id):
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=tr(user_id, "already_booked_msg")  # "У вас уже есть активная бронь..."
+            )
+            return
+
         markup = InlineKeyboardMarkup()
         days_labels = LANG_TEXTS[get_lang(user_id)]["days"]
         for i, day_name in enumerate(days_labels):
@@ -202,9 +242,8 @@ def callback_function_choice(call):
             reply_markup=markup
         )
 
-    # ======== ФУНКЦИЯ Y ========
+    # --- ФУНКЦИЯ Y ---
     elif call.data == "func_Y":
-        # Генерируем ссылку на чат Y и отправляем пользователю
         markup = InlineKeyboardMarkup()
         markup.add(
             InlineKeyboardButton(text=tr(user_id, "go_back"), callback_data="go_main_menu")
@@ -223,9 +262,8 @@ def callback_function_choice(call):
             reply_markup=markup
         )
 
-    # ======== ФУНКЦИЯ Z ========
+    # --- ФУНКЦИЯ Z ---
     elif call.data == "func_Z":
-        # Генерируем ссылку на чат Z и отправляем пользователю
         markup = InlineKeyboardMarkup()
         markup.add(
             InlineKeyboardButton(text=tr(user_id, "go_back"), callback_data="go_main_menu")
@@ -247,6 +285,16 @@ def callback_function_choice(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("day_"))
 def callback_day(call):
     user_id = call.from_user.id
+
+    # Повторно проверяем — вдруг пользователь быстро нажал кнопку, пока мы не вернулись в главное меню
+    if user_has_future_booking(user_id):
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=tr(user_id, "already_booked_msg")
+        )
+        return
+
     offset_str = call.data.split("_", 1)[1]
     offset = int(offset_str)
 
@@ -261,7 +309,6 @@ def callback_day(call):
         date_time_obj = datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
         if date_time_obj < datetime.now():
             continue
-
         if (chosen_date_str, slot) not in booked_sessions:
             markup.add(
                 InlineKeyboardButton(
@@ -294,8 +341,18 @@ def callback_day(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("slot_"))
 def callback_timeslot(call):
     user_id = call.from_user.id
+
+    # На всякий случай ещё раз проверяем
+    if user_has_future_booking(user_id):
+        bot.answer_callback_query(
+            callback_query_id=call.id,
+            text=tr(user_id, "already_booked_msg")
+        )
+        return
+
     _, chosen_date_str, chosen_slot = call.data.split("_", 2)
 
+    # Проверяем, не занято ли (на всякий случай)
     if (chosen_date_str, chosen_slot) in booked_sessions:
         bot.answer_callback_query(
             callback_query_id=call.id,
@@ -303,6 +360,7 @@ def callback_timeslot(call):
         )
         return
 
+    # Бронируем
     booked_sessions[(chosen_date_str, chosen_slot)] = user_id
 
     # Запланируем уведомление
@@ -329,14 +387,10 @@ def callback_timeslot(call):
 def callback_go_main_menu(call):
     show_main_menu(call.message)
 
-# ======= Запуск фоновой задачи (schedule) =======
-def start_background_scheduler():
-    schedule.every(1).minutes.do(check_scheduled_events)
-    t = threading.Thread(target=run_schedule_checker, daemon=True)
-    t.start()
-
+# -------------------------------------------------------------------
+# ЗАПУСК
+# -------------------------------------------------------------------
 if __name__ == "__main__":
-    
     print("Bot is running...")
     start_background_scheduler()
     bot.infinity_polling()
