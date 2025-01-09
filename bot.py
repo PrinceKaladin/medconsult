@@ -4,7 +4,10 @@ from datetime import datetime, timedelta, time
 import schedule
 import threading
 import time as time_sleep
+import pytz
+moscow_tz = pytz.timezone("Europe/Moscow")
 
+now_moscow = datetime.now(moscow_tz)
 # ===== НАСТРОЙКИ И КОНСТАНТЫ =====
 TOKEN = "7376605355:AAHGXDRBWVjTiwW0uAZFF70B0ggYIu7SU3Q"
 bot = telebot.TeleBot(TOKEN)
@@ -99,8 +102,16 @@ def generate_time_slots():
     slots = []
     start_time = time(11, 0)
     end_time   = time(22, 0)
-    current = datetime.combine(datetime.today(), start_time)
-    end_dt = datetime.combine(datetime.today(), end_time)
+    today_moscow = datetime.now(moscow_tz).date()
+    
+    # Собираем datetime для начала
+    naive_start = datetime.combine(today_moscow, start_time)
+    # Локализуем в Москве
+    current = moscow_tz.localize(naive_start)
+
+    # То же самое для end_time
+    naive_end = datetime.combine(today_moscow, end_time)
+    end_dt = moscow_tz.localize(naive_end)
 
     while current < end_dt:
         slots.append(current.strftime("%H:%M"))
@@ -117,12 +128,14 @@ def user_has_future_booking(user_id):
     Если в словаре booked_sessions найдётся слот (дата+время),
     которое ещё не наступило, значит у пользователя уже есть бронь в будущем.
     """
-    now = datetime.now()
+    now = datetime.now(moscow_tz)
     for (ds, sl), uid in booked_sessions.items():
         if uid == user_id:
-            dt = datetime.strptime(f"{ds} {sl}", "%Y-%m-%d %H:%M")
-            # Проверяем, не прошло ли уже время
-            if dt >= now:
+            dt_naive = datetime.strptime(f"{ds} {sl}", "%Y-%m-%d %H:%M")
+            dt_moscow = moscow_tz.localize(dt_naive)   # теперь dt_moscow — aware datetime
+    
+            # Проверяем, не прошло ли уже время (сравниваем оба в Москве)
+            if dt_moscow >= now:
                 return True
     return False
 
@@ -151,7 +164,7 @@ def show_main_menu(message):
 # ФОНОВАЯ ПРОВЕРКА ЗАПЛАНИРОВАННЫХ УВЕДОМЛЕНИЙ
 # -------------------------------------------------------------------
 def check_scheduled_events():
-    now = datetime.now()
+    now = datetime.now(moscow_tz)
     for task in scheduled_notifications:
         if not task["sent"] and now >= task["notify_dt"]:
             user_id = task["user_id"]
@@ -298,7 +311,7 @@ def callback_day(call):
     offset_str = call.data.split("_", 1)[1]
     offset = int(offset_str)
 
-    chosen_date = (datetime.now() + timedelta(days=offset)).date()
+    chosen_date = (datetime.now(moscow_tz) + timedelta(days=offset)).date()
     chosen_date_str = chosen_date.strftime("%Y-%m-%d")
 
     markup = InlineKeyboardMarkup(row_width=4)
@@ -307,7 +320,7 @@ def callback_day(call):
     for slot in ALL_TIME_SLOTS:
         date_time_str = f"{chosen_date_str} {slot}"
         date_time_obj = datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
-        if date_time_obj < datetime.now():
+        if date_time_obj < datetime.now(moscow_tz):
             continue
         if (chosen_date_str, slot) not in booked_sessions:
             markup.add(
@@ -362,9 +375,10 @@ def callback_timeslot(call):
 
     # Бронируем
     booked_sessions[(chosen_date_str, chosen_slot)] = user_id
-
+    naive_dt = datetime.strptime(f"{chosen_date_str} {chosen_slot}", "%Y-%m-%d %H:%M") 
     # Запланируем уведомление
     date_time_obj = datetime.strptime(f"{chosen_date_str} {chosen_slot}", "%Y-%m-%d %H:%M")
+    date_time_obj = moscow_tz.localize(naive_dt) 
     scheduled_notifications.append({
         "user_id": user_id,
         "notify_dt": date_time_obj,
